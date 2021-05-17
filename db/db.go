@@ -10,17 +10,17 @@ type Options struct {
 	Filters     []*apiModel.Filter
 }
 
-type SystemDB interface {
-	Select(Options) ([]*model.System, error)
-	SelectByName(name string) (*model.System, error)
-	Insert(system *model.System) error
-	Update(system *model.System) error
-	Delete(name string) error
+type TankDB interface {
+	Select(Options) ([]*model.Tank, error)
+	SelectByNumber(number uint32) (*model.Tank, error)
+	Insert(tank *model.Tank) error
+	Update(tank *model.Tank) error
+	Delete(number uint32) error
 }
 
 type ErrorCode string
 
 const (
-	SystemAlreadyExists ErrorCode = "system already exists"
-	Unknown             ErrorCode = "unknown error with db occured"
+	TankAlreadyExists ErrorCode = "tank already exists"
+	Unknown             ErrorCode = "unknown error with db occurred"
 )

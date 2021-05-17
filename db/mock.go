@@ -5,38 +5,33 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/mattn/go-sqlite3"
 
 	apiModel "github.com/anchamber/genetics-api/model"
-	"github.com/anchamber/genetics-system/db/model"
+	"github.com/anchamber/genetics-tank/db/model"
 )
 
-type SystemDBMock struct {
+type TankDBMock struct {
 	DB *sqlx.DB
 }
 
-var MockDataSystems = []*model.System{
-	{Name: "doctor", Location: "tardis", Type: model.Techniplast, Responsible: "", CleaningInterval: 90, LastCleaned: time.Now()},
-	{Name: "rick", Location: "c-137", Type: model.Techniplast, Responsible: "", CleaningInterval: 90, LastCleaned: time.Now()},
-	{Name: "morty", Location: "herry-herpson", Type: model.Techniplast, Responsible: "", CleaningInterval: 90, LastCleaned: time.Now()},
-	{Name: "obi", Location: "high_ground", Type: model.Techniplast, Responsible: "", CleaningInterval: 90, LastCleaned: time.Now()},
+var MockDataTanks = []*model.Tank{
 }
 
-func NewMockDB(initialData []*model.System) SystemDBMock {
+func NewMockDB(initialData []*model.Tank) TankDBMock {
 	if initialData == nil {
-		initialData = MockDataSystems
+		initialData = MockDataTanks
 	}
-	mock := SystemDBMock{
+	mock := TankDBMock{
 		DB: initDB(),
 	}
 	mock.DB.SetMaxOpenConns(1)
-	for _, system := range initialData {
-		err := mock.Insert(system)
+	for _, tank := range initialData {
+		err := mock.Insert(tank)
 		if err != nil {
-			return SystemDBMock{}
+			return TankDBMock{}
 		}
 	}
 
@@ -102,11 +97,11 @@ func (o *Options) createFilterMap() map[string]interface{} {
 	return values
 }
 
-func (systemDB SystemDBMock) Select(options Options) ([]*model.System, error) {
-	selectStatement := fmt.Sprintf("SELECT id, name, location, type, responsible, cleaning_interval, last_cleaned FROM systems %s %s;", options.createFilterClause(), options.createPaginationClause())
+func (tankDB TankDBMock) Select(options Options) ([]*model.Tank, error) {
+	selectStatement := fmt.Sprintf("SELECT id, tank, number, active, size, fish_count FROM tanks %s %s;", options.createFilterClause(), options.createPaginationClause())
 	// fmt.Println(selectStatement)
 	filterValues := options.createFilterMap()
-	rows, err := systemDB.DB.NamedQuery(selectStatement, filterValues)
+	rows, err := tankDB.DB.NamedQuery(selectStatement, filterValues)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		log.Fatalf(`failed to select all`)
@@ -119,10 +114,10 @@ func (systemDB SystemDBMock) Select(options Options) ([]*model.System, error) {
 			fmt.Printf(fmt.Sprintf("failed closing rows %v\n", err))
 		}
 	}(rows)
-	var data []*model.System
+	var data []*model.Tank
 	for rows.Next() {
-		var entry model.System
-		err = rows.Scan(&entry.ID, &entry.Name, &entry.Location, &entry.Type, &entry.Responsible, &entry.CleaningInterval, &entry.LastCleaned)
+		var entry model.Tank
+		err = rows.Scan(&entry.ID, &entry.System, &entry.Number, &entry.Active, &entry.Size, &entry.FishCount)
 		if err != nil {
 			return nil, err
 		}
@@ -132,20 +127,20 @@ func (systemDB SystemDBMock) Select(options Options) ([]*model.System, error) {
 	return data, nil
 }
 
-func (systemDB SystemDBMock) SelectByName(name string) (*model.System, error) {
+func (tankDB TankDBMock) SelectByNumber(number uint32) (*model.Tank, error) {
 	//goland:noinspection ALL
 	selectStatement := `
-		SELECT name, location, type, cleaning_interval, last_cleaned 
-		FROM systems
-		WHERE name = $1;
+		SELECT tank, number, active, size, fish_count
+		FROM tanks
+		WHERE number = $1;
 	`
-	rows, err := systemDB.DB.Query(selectStatement, name)
+	rows, err := tankDB.DB.Query(selectStatement, number)
 	if err != nil {
 		log.Fatalf(`failed to select all`)
 		return nil, err
 	}
 
-	var entry model.System
+	var entry model.Tank
 	if !rows.Next() {
 		return nil, nil
 	}
@@ -155,7 +150,7 @@ func (systemDB SystemDBMock) SelectByName(name string) (*model.System, error) {
 			fmt.Printf(fmt.Sprintf("failed closing rows %v\n", err))
 		}
 	}(rows)
-	err = rows.Scan(&entry.Name, &entry.Location, &entry.Type, &entry.CleaningInterval, &entry.LastCleaned)
+	err = rows.Scan(&entry.ID, &entry.System, &entry.Number, &entry.Active, &entry.Size, &entry.FishCount)
 	if err != nil {
 		return nil, err
 	}
@@ -163,14 +158,14 @@ func (systemDB SystemDBMock) SelectByName(name string) (*model.System, error) {
 	return &entry, nil
 }
 
-func (systemDB SystemDBMock) Insert(system *model.System) error {
+func (tankDB TankDBMock) Insert(tank *model.Tank) error {
 	var errorString = ""
 	//goland:noinspection ALL
 	insertStatement := `
-		INSERT INTO systems (name, location, type, responsible, cleaning_interval, last_cleaned)
+		INSERT INTO tanks (tank, number, active, size, fish_count)
 			VALUES (?, ?, ?, ?, ?, ?);
 	`
-	tx, err := systemDB.DB.Begin()
+	tx, err := tankDB.DB.Begin()
 	if err != nil {
 		fmt.Printf("failed to begin transaction\n")
 		return err
@@ -188,13 +183,13 @@ func (systemDB SystemDBMock) Insert(system *model.System) error {
 		}
 	}(statement)
 
-	_, err = statement.Exec(system.Name, system.Location, system.Type, system.Responsible, system.CleaningInterval, system.LastCleaned)
+	_, err = statement.Exec(tank.ID, tank.System, tank.Number, tank.Active, tank.Size, tank.FishCount)
 	if err != nil {
 		fmt.Printf("failed to execute statement\n")
 		if sqliteErr, ok := err.(sqlite3.Error); ok {
 			switch sqliteErr.Code {
 			case sqlite3.ErrConstraint:
-				errorString = string(SystemAlreadyExists)
+				errorString = string(TankAlreadyExists)
 			default:
 				fmt.Printf("%v\n", sqliteErr)
 				errorString = string(Unknown)
@@ -221,14 +216,14 @@ func (systemDB SystemDBMock) Insert(system *model.System) error {
 	return errors.New(errorString)
 }
 
-func (systemDB SystemDBMock) Update(system *model.System) error {
+func (tankDB TankDBMock) Update(tank *model.Tank) error {
 	//goland:noinspection ALL
 	insertStatement := `
-		UPDATE systems 
-			SET name = $1, location = $2, type = $3, cleaning_interval = $4, last_cleaned = $5
+		UPDATE tanks 
+			SET tank = $1, number = $2, active = $3, size = $4, fish_count = $5
 			WHERE name = $1;
 	`
-	tx, err := systemDB.DB.Begin()
+	tx, err := tankDB.DB.Begin()
 	if err != nil {
 		fmt.Printf("failed to begin transaction\n")
 		return err
@@ -246,7 +241,7 @@ func (systemDB SystemDBMock) Update(system *model.System) error {
 		}
 	}(statement)
 
-	_, err = statement.Exec(system.Name, system.Location, system.Type, system.CleaningInterval, system.LastCleaned)
+	_, err = statement.Exec(tank.ID, tank.System, tank.Number, tank.Active, tank.Size, tank.FishCount)
 	if err != nil {
 		fmt.Printf("failed to execute statement\n")
 		return err
@@ -258,12 +253,12 @@ func (systemDB SystemDBMock) Update(system *model.System) error {
 	return nil
 }
 
-func (systemDB SystemDBMock) Delete(name string) error {
+func (tankDB TankDBMock) Delete(number uint32) error {
 	//goland:noinspection ALL
 	statementString := `
-		DELETE FROM systems WHERE name = ?;
+		DELETE FROM tanks WHERE number = ?;
 	`
-	statement, err := systemDB.DB.Prepare(statementString)
+	statement, err := tankDB.DB.Prepare(statementString)
 	if err != nil {
 		fmt.Printf("failed to prepare statement\n")
 		return err
@@ -275,7 +270,7 @@ func (systemDB SystemDBMock) Delete(name string) error {
 		}
 	}(statement)
 
-	_, err = statement.Exec(name)
+	_, err = statement.Exec(number)
 	if err != nil {
 		fmt.Printf("failed to execute statement\n")
 		if sqliteErr, ok := err.(sqlite3.Error); ok {
@@ -301,7 +296,6 @@ func initDB() *sqlx.DB {
 	if err != nil {
 		return nil
 	}
-	err = CreateIndexes(db)
 	if err != nil {
 		return nil
 	}
@@ -311,33 +305,18 @@ func initDB() *sqlx.DB {
 
 func CreateTables(db *sqlx.DB) error {
 	//goland:noinspection ALL
-	systemTable := `
-		CREATE TABLE IF NOT EXISTS systems(
+	tankTable := `
+		CREATE TABLE IF NOT EXISTS tanks(
 			id					INTEGER	PRIMARY KEY AUTOINCREMENT,
-			name				TEXT UNIQUE NOT NULL,
-			location			TEXT,
-			type				TEXT,
-			responsible			TEXT,
-			cleaning_interval 	INT,
-			last_cleaned		DATE
+			number				INT UNIQUE,
+			tank				string,
+			active				bit ,
+			size				INT,
+			fish_count 			INT
 		);
 	`
 
-	_, err := db.Exec(systemTable)
-	if err != nil {
-		log.Fatalf("failed to create table\n")
-		return err
-	}
-	return nil
-}
-
-func CreateIndexes(db *sqlx.DB) error {
-	//goland:noinspection ALL
-	systemIndex := `
-		CREATE UNIQUE INDEX IF NOT EXISTS idx_system_name ON systems(name);
-	`
-
-	_, err := db.Exec(systemIndex)
+	_, err := db.Exec(tankTable)
 	if err != nil {
 		log.Fatalf("failed to create table\n")
 		return err
